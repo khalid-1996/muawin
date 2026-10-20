@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>المعاون</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="bg" id="bgA"></div>
+<div class="bg" id="bgB"></div>
+<div class="scrim"></div>
+
+<main class="stage" id="stage">
+
+  <section class="time">
+    <div>
+      <div class="hijri" id="hijri"></div>
+      <div class="greg" id="greg"></div>
+    </div>
+    <div class="clock" id="clock" title="اضغط مطولاً للإعدادات">
+      <div class="d"><span id="hh"></span><i>:</i><span id="mm"></span></div>
+      <div class="ap" id="ap"></div>
+    </div>
+    <div class="prayer" id="prayer">
+      <span class="k">الصلاة القادمة</span>
+      <span class="v" id="prayerName">—</span>
+      <span class="s" id="prayerIn"></span>
+    </div>
+  </section>
+
+  <section class="mid">
+    <div class="wx" id="wx">
+      <span><b id="wxTemp">—</b><span class="g" id="wxText"></span></span>
+      <span id="wxRange"></span>
+    </div>
+    <div class="hadith">
+      <div class="k">حديث اليوم</div>
+      <p id="hadithText"></p>
+      <div class="src" id="hadithSrc"></div>
+    </div>
+  </section>
+
+  <section class="side">
+    <div class="car" id="car">
+      <div><div class="k">البطارية</div><div class="v" id="carBat">—</div><div class="bar"><span id="carBatBar" style="width:0"></span></div></div>
+      <div><div class="k">المدى</div><div class="v" id="carRange">—</div><div class="note" id="carRangeNote">قريباً</div></div>
+      <div><div class="k">المقصورة</div><div class="v" id="carCabin">—</div><div class="note" id="carTires">قريباً</div></div>
+    </div>
+    <div class="media" id="media">
+      <div class="art" id="mediaArt"></div>
+      <div class="info">
+        <div class="t" id="mediaTitle">لا يوجد تشغيل</div>
+        <div class="a" id="mediaArtist">افتح تطبيق صوت ليظهر هنا</div>
+        <div class="prog"><span id="mediaProg"></span></div>
+      </div>
+      <div class="ctrl">
+        <button data-cmd="prev" aria-label="السابق"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zM9.5 12l8.5 6V6z"/></svg></button>
+        <button data-cmd="toggle" class="p" aria-label="تشغيل أو إيقاف"><svg viewBox="0 0 24 24" id="playIcon"><path d="M8 5v14l11-7z"/></svg></button>
+        <button data-cmd="next" aria-label="التالي"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg></button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="dock">
+    <div class="favs" id="favs"></div>
+    <div class="match" id="match" hidden></div>
+    <button class="all" id="allBtn"><span>كل التطبيقات</span><span class="dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></button>
+  </nav>
+
+  <!-- all apps -->
+  <section class="sheet" id="drawer" hidden>
+    <header>
+      <h2>كل التطبيقات</h2>
+      <span class="hint">اضغط مطولاً على تطبيق لإضافته للمفضلة أو إزالته</span>
+      <button class="close" data-close>إغلاق</button>
+    </header>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <!-- settings -->
+  <section class="sheet" id="settings" hidden>
+    <header>
+      <h2>الإعدادات</h2>
+      <span class="hint" id="ver"></span>
+      <button class="close" data-close>إغلاق</button>
+    </header>
+    <div class="form">
+      <div class="col">
+        <h3>المدينة</h3>
+        <label>الاسم<input id="sCity"></label>
+        <label>خط العرض<input id="sLat" inputmode="decimal"></label>
+        <label>خط الطول<input id="sLon" inputmode="decimal"></label>
+        <label>طريقة حساب الصلاة
+          <select id="sMethod">
+            <option value="8">منطقة الخليج</option>
+            <option value="16">دبي</option>
+            <option value="4">أم القرى</option>
+            <option value="9">الكويت</option>
+            <option value="10">قطر</option>
+          </select>
+        </label>
+      </div>
+      <div class="col">
+        <h3>المباريات</h3>
+        <label>رقم الفريق في TheSportsDB<input id="sTeam" inputmode="numeric" placeholder="اتركه فارغاً لإخفاء المباريات"></label>
+        <h3>الوسائط</h3>
+        <button class="btn" id="sMediaPerm">تفعيل عرض الوسائط</button>
+        <p class="small">إذا ما فتحت الشاشة، نفّذ بالـ ADB:<br><code>cmd notification allow_listener ae.khalid.muawin/ae.khalid.muawin.MediaListener</code></p>
+      </div>
+      <div class="col">
+        <h3>شاشة العرض</h3>
+        <p class="small" id="sDisplayNow"></p>
+        <div id="sDisplays" class="displays"></div>
+        <button class="btn primary" id="sSave">حفظ</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" hidden></div>
+</main>
+
+<script src="hadith.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
