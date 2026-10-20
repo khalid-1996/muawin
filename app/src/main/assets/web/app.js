@@ -407,6 +407,55 @@
   }
   window.renderCar = renderCar; // the Android side will call this once car data is wired in
 
+  // ------------------------------------------------------------ ADB + updates
+  const REPO = "khalid-1996/muawin";
+  let updateUrl = null;
+
+  function parseVer(s) {
+    const m = String(s || "").match(/(\d+)\.(\d+)\.(\d+)/);
+    return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0];
+  }
+  function newer(a, b) {
+    const x = parseVer(a), y = parseVer(b);
+    for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] > y[i]; }
+    return false;
+  }
+
+  async function checkUpdate(manual) {
+    const cur = A ? A.version() : "1.0.0";
+    try {
+      const j = await getJSON(`https://api.github.com/repos/${REPO}/releases/latest`);
+      const tag = j.tag_name || "";
+      const asset = (j.assets || []).find((a) => a.name && a.name.endsWith(".apk"));
+      $("#sVerNow").textContent = `الحالي ${cur} · المتوفر ${tag.replace(/^v/, "") || "—"}`;
+      if (asset && newer(tag, cur)) {
+        updateUrl = asset.browser_download_url;
+        $("#bannerText").textContent = `تحديث جديد متوفر (${tag})`;
+        $("#banner").hidden = false;
+      } else if (manual) {
+        toast("أنت على آخر إصدار");
+      }
+    } catch (e) {
+      $("#sVerNow").textContent = `الحالي ${cur}`;
+      if (manual) toast("تعذر التحقق من التحديثات");
+    }
+  }
+
+  const ADB_AR = { connected: "مربوط", connecting: "جاري الربط…", error: "فشل الربط", off: "غير مربوط" };
+  function renderAdb() {
+    if (!A) { $("#sAdbNow").textContent = "الحالة: غير متاح في المعاينة"; return; }
+    const st = A.adbStatus();
+    $("#sAdbNow").textContent = "الحالة: " + (ADB_AR[st] || st);
+    $("#sAdbConnect").textContent = st === "connected" ? "مربوط ✓" : "ربط ADB";
+  }
+
+  $("#sAdbConnect").addEventListener("click", () => {
+    if (A) { A.adbConnect(); renderAdb(); setTimeout(renderAdb, 1500); }
+  });
+  $("#sCheckUpdate").addEventListener("click", () => checkUpdate(true));
+  $("#bannerBtn").addEventListener("click", () => { if (A && updateUrl) A.installUpdate(updateUrl); });
+  $("#bannerX").addEventListener("click", () => { $("#banner").hidden = true; });
+
   // ------------------------------------------------------------ sheets
   function closeSheets() { document.querySelectorAll(".sheet").forEach((s) => (s.hidden = true)); }
   window.onBack = closeSheets;
@@ -422,6 +471,8 @@
     $("#sMethod").value = String(cfg.method);
     $("#sTeam").value = cfg.team;
     $("#ver").textContent = A ? "الإصدار " + A.version() : "";
+    renderAdb();
+    $("#sVerNow").textContent = "الحالي " + (A ? A.version() : "1.0.0");
     const box = $("#sDisplays");
     box.innerHTML = "";
     let list = [], cur = 0;
@@ -473,10 +524,14 @@
   loadApps();
   loadMatch().then(renderDock);
   renderMedia();
+  checkUpdate(false);
+  if (A && A.adbStatus() === "off") A.adbConnect(); // one-time approval, then silent
 
   setInterval(tickClock, 1000);
   setInterval(renderMedia, 1000);
   setInterval(loadWeather, 30 * 60 * 1000);
   setInterval(loadMatch, 15 * 60 * 1000);
   setInterval(loadPrayers, 6 * 60 * 60 * 1000);
+  setInterval(checkUpdate, 6 * 60 * 60 * 1000);
+  setInterval(() => { if (!$("#settings").hidden) renderAdb(); }, 2000);
 })();

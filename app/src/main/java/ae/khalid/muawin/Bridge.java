@@ -27,7 +27,12 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.List;
 
 /** Everything the web page can ask Android for. Exposed to JS as window.Android. */
@@ -35,15 +40,17 @@ public class Bridge {
 
     private final Activity activity;
     private final WebView web;
+    private final AdbClient adb;
+    private volatile String adbState = "off"; // off | connecting | connected | error
 
     Bridge(Activity activity, WebView web) {
         this.activity = activity;
         this.web = web;
+        this.adb = new AdbClient(activity.getApplicationContext());
     }
 
     // ---------------------------------------------------------------- apps
 
-    /** Launchable apps as JSON: [{pkg, label}]. */
     @JavascriptInterface
     public String apps() {
         JSONArray out = new JSONArray();
@@ -66,7 +73,6 @@ public class Bridge {
         return out.toString();
     }
 
-    /** App icon as a PNG data URL (96 px), or "" if unavailable. */
     @JavascriptInterface
     public String icon(String pkg) {
         try {
@@ -77,28 +83,37 @@ public class Bridge {
         }
     }
 
-    /** Opens an app on the same screen this launcher is shown on. */
+    private String launchComponent(String pkg) {
+        try {
+            Intent i = activity.getPackageManager().getLaunchIntentForPackage(pkg);
+            if (i != null && i.getComponent() != null) return i.getComponent().flattenToShortString();
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /** Opens an app on the same screen this launcher is shown on (ADB if available, else the system API). */
     @JavascriptInterface
     public void launch(final String pkg) {
+        final int display = currentDisplay();
+        if (adb.isConnected()) {
+            final String comp = launchComponent(pkg);
+            if (comp != null) {
+                runAdb("am start -n " + comp + " --display " + display, null);
+                return;
+            }
+        }
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
                 Intent i = activity.getPackageManager().getLaunchIntentForPackage(pkg);
-                if (i == null) {
-                    toast("التطبيق غير متاح");
-                    return;
-                }
+                if (i == null) { toast("التطبيق غير متاح"); return; }
                 i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 try {
                     ActivityOptions o = ActivityOptions.makeBasic();
-                    o.setLaunchDisplayId(currentDisplay());
+                    o.setLaunchDisplayId(display);
                     activity.startActivity(i, o.toBundle());
                 } catch (Exception e) {
-                    try {
-                        activity.startActivity(i);
-                    } catch (Exception e2) {
-                        toast("تعذر فتح التطبيق");
-                    }
+                    try { activity.startActivity(i); } catch (Exception e2) { toast("تعذر فتح التطبيق"); }
                 }
             }
         });
@@ -112,7 +127,6 @@ public class Bridge {
         return activity.getWindowManager().getDefaultDisplay().getDisplayId();
     }
 
-    /** All displays as JSON: [{id, name, w, h}]. */
     @JavascriptInterface
     public String displays() {
         JSONArray out = new JSONArray();
@@ -133,9 +147,13 @@ public class Bridge {
         return out.toString();
     }
 
-    /** Re-opens the launcher on another display, then closes this copy. */
+    /** Re-opens the launcher on another display. Uses ADB (reliable on DiLink), falls back to the system API. */
     @JavascriptInterface
     public void moveTo(final int displayId) {
+        if (adb.isConnected()) {
+            runAdb("am start -n ae.khalid.muawin/.MainActivity --display " + displayId, "تم النقل للشاشة " + displayId);
+            return;
+        }
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -147,12 +165,103 @@ public class Bridge {
                     activity.startActivity(i, o.toBundle());
                     activity.finish();
                 } catch (SecurityException e) {
-                    toast("النظام رفض النقل. افتحه بالأمر: am start -n ae.khalid.muawin/.MainActivity --display " + displayId);
+                    toast("النظام رفض النقل. فعّل ADB من الإعدادات أو نفّذ: am start -n ae.khalid.muawin/.MainActivity --display " + displayId);
                 } catch (Exception e) {
                     toast("تعذر النقل: " + e.getMessage());
                 }
             }
         });
+    }
+
+    // ---------------------------------------------------------------- ADB
+
+    @JavascriptInterface
+    public String adbStatus() {
+        if (adb.isConnected()) return "connected";
+        return adbState;
+    }
+
+    /** Connects to the car's own adbd on 127.0.0.1:5555 (shows the one-time approval prompt). */
+    @JavascriptInterface
+    public void adbConnect() {
+        if ("connecting".equals(adbState)) return;
+        adbState = "connecting";
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    adb.connect("127.0.0.1", 5555);
+                    adbState = "connected";
+                    toast("تم ربط ADB");
+                } catch (Exception e) {
+                    adbState = "error";
+                    toast("فشل ربط ADB: " + e.getMessage());
+                }
+            }
+        }, "adb-connect").start();
+    }
+
+    /** Runs an arbitrary shell line over ADB (for power users / debugging from the settings page). */
+    @JavascriptInterface
+    public String adbExec(String cmd) {
+        try { return adb.exec(cmd); } catch (Exception e) { return "خطأ: " + e.getMessage(); }
+    }
+
+    private void runAdb(final String cmd, final String okMsg) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    adb.exec(cmd);
+                    if (okMsg != null) toast(okMsg);
+                } catch (Exception e) {
+                    toast("فشل الأمر: " + e.getMessage());
+                }
+            }
+        }, "adb-exec").start();
+    }
+
+    // ---------------------------------------------------------------- update
+
+    /** Downloads the given APK and installs it over ADB (silent, no store). */
+    @JavascriptInterface
+    public void installUpdate(final String url) {
+        if (!adb.isConnected()) {
+            toast("فعّل ADB أولاً حتى يُثبَّت التحديث تلقائياً");
+            return;
+        }
+        toast("جاري تنزيل التحديث…");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    File dir = activity.getExternalFilesDir(null);
+                    File apk = new File(dir, "muawin-update.apk");
+                    download(url, apk);
+                    String res = adb.exec("pm install -r -d " + apk.getAbsolutePath() + " 2>&1");
+                    if (res != null && res.toLowerCase().contains("success")) toast("تم التحديث. سيُعاد فتح المعاون");
+                    else toast("لم يكتمل التثبيت: " + (res == null ? "" : res.trim()));
+                } catch (Exception e) {
+                    toast("فشل التحديث: " + e.getMessage());
+                }
+            }
+        }, "adb-update").start();
+    }
+
+    private void download(String url, File dest) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setInstanceFollowRedirects(true);
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(60000);
+        try (InputStream is = c.getInputStream(); FileOutputStream os = new FileOutputStream(dest)) {
+            byte[] buf = new byte[8192];
+            int r;
+            while ((r = is.read(buf)) > 0) os.write(buf, 0, r);
+        } finally {
+            c.disconnect();
+        }
+        // Make it world-readable so adbd (uid shell) can read it.
+        try { dest.setReadable(true, false); } catch (Exception ignored) {}
     }
 
     // ---------------------------------------------------------------- media
@@ -168,7 +277,6 @@ public class Bridge {
         return list.get(0);
     }
 
-    /** Current media as JSON: {perm, active, title, artist, playing, pos, dur, pkg}. */
     @JavascriptInterface
     public String media() {
         JSONObject o = new JSONObject();
@@ -207,15 +315,11 @@ public class Bridge {
                 o.put("pos", Math.max(0, pos));
             }
         } catch (Exception e) {
-            try {
-                o.put("active", false);
-            } catch (Exception ignored) {
-            }
+            try { o.put("active", false); } catch (Exception ignored) {}
         }
         return o.toString();
     }
 
-    /** Album art of the current track as a data URL, or "". */
     @JavascriptInterface
     public String mediaArt() {
         try {
@@ -233,7 +337,6 @@ public class Bridge {
         }
     }
 
-    /** cmd: "toggle" | "next" | "prev". */
     @JavascriptInterface
     public void mediaCmd(String cmd) {
         try {
@@ -253,7 +356,6 @@ public class Bridge {
         }
     }
 
-    /** Opens the system screen where notification access is granted (may not exist on DiLink). */
     @JavascriptInterface
     public void openMediaPermission() {
         activity.runOnUiThread(new Runnable() {
@@ -264,7 +366,12 @@ public class Bridge {
                     i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     activity.startActivity(i);
                 } catch (Exception e) {
-                    toast("فعّلها بالأمر: cmd notification allow_listener ae.khalid.muawin/ae.khalid.muawin.MediaListener");
+                    if (adb.isConnected()) {
+                        runAdb("cmd notification allow_listener ae.khalid.muawin/ae.khalid.muawin.MediaListener",
+                                "تم تفعيل عرض الوسائط");
+                    } else {
+                        toast("فعّلها بالأمر: cmd notification allow_listener ae.khalid.muawin/ae.khalid.muawin.MediaListener");
+                    }
                 }
             }
         });
