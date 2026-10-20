@@ -109,6 +109,15 @@
         <p class="small">إذا ما فتحت الشاشة، نفّذ بالـ ADB:<br><code>cmd notification allow_listener ae.khalid.muawin/ae.khalid.muawin.MediaListener</code></p>
       </div>
       <div class="col">
+        <h3>النظام (ADB)</h3>
+        <p class="small" id="sAdbNow">الحالة: غير مربوط</p>
+        <button class="btn" id="sAdbConnect">ربط ADB</button>
+        <p class="small">يسمح بفتح المعاون على شاشة الراكب وتثبيت التحديثات تلقائياً. يظهر طلب سماح مرة واحدة فقط.</p>
+
+        <h3>التحديثات</h3>
+        <p class="small" id="sVerNow"></p>
+        <button class="btn" id="sCheckUpdate">تحقق من التحديثات</button>
+
         <h3>شاشة العرض</h3>
         <p class="small" id="sDisplayNow"></p>
         <div id="sDisplays" class="displays"></div>
@@ -116,6 +125,12 @@
       </div>
     </div>
   </section>
+
+  <div class="banner" id="banner" hidden>
+    <span id="bannerText">تحديث جديد متوفر</span>
+    <button class="go" id="bannerBtn">تحديث الآن</button>
+    <button class="x" id="bannerX" aria-label="لاحقاً">×</button>
+  </div>
 
   <div class="toast" id="toast" hidden></div>
 </main>

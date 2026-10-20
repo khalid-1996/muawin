@@ -2,6 +2,7 @@ package ae.khalid.muawin;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
@@ -69,6 +70,14 @@ public class MainActivity extends Activity {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) hideSystemBars();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // Relaunched (e.g. Home pressed while already here): stay put, just refresh.
+        hideSystemBars();
+        if (web != null) web.evaluateJavascript("window.onResumeApp && onResumeApp()", null);
     }
 
     @Override
