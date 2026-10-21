@@ -238,15 +238,19 @@ public class Bridge {
             @Override
             public void run() {
                 try {
-                    File dir = activity.getExternalFilesDir(null);
-                    File apk = new File(dir, "muawin-update.apk");
+                    // Download privately, then push it to /data/local/tmp over ADB: the installer
+                    // (system_server) is blocked by SELinux from reading app storage, but not tmp.
+                    File apk = new File(activity.getFilesDir(), "muawin-update.apk");
                     download(url, apk);
+                    final String tmp = "/data/local/tmp/muawin-update.apk";
+                    adb.push(apk, tmp);
+                    apk.delete();
                     int display = link.homeDisplay() >= 0 ? link.homeDisplay() : currentDisplay();
                     toast("جاري التثبيت… المعاون سيُغلق ويرجع خلال ثوانٍ");
                     // One shell line: installing kills this process, but adbd keeps running
-                    // the rest of the line, so the relaunch still happens.
-                    String res = adb.exec("pm install -r -d " + apk.getAbsolutePath()
-                            + " 2>&1 && sleep 1 && am start -n ae.khalid.muawin/.MainActivity --display " + display);
+                    // the rest of the line, so the cleanup and relaunch still happen.
+                    String res = adb.exec("pm install -r -d " + tmp + " 2>&1 && (rm -f " + tmp
+                            + "; sleep 1; am start -n ae.khalid.muawin/.MainActivity --display " + display + ")");
                     // Only reached if the install failed (on success this process is gone).
                     if (res != null && !res.toLowerCase().contains("success")) toast("لم يكتمل التثبيت: " + res.trim());
                 } catch (Exception e) {
