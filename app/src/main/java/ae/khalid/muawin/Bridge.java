@@ -241,21 +241,35 @@ public class Bridge {
             @Override
             public void run() {
                 try {
-                    // Download privately, then push it to /data/local/tmp over ADB: the installer
-                    // (system_server) is blocked by SELinux from reading app storage, but not tmp.
                     File apk = new File(activity.getFilesDir(), "muawin-update.apk");
                     download(url, apk);
-                    final String tmp = "/data/local/tmp/muawin-update.apk";
-                    adb.push(apk, tmp);
-                    apk.delete();
                     int display = link.homeDisplay() >= 0 ? link.homeDisplay() : currentDisplay();
+                    // The installer kills this process on success, so arm the relaunch first in a
+                    // detached shell (BootReceiver also reopens us on MY_PACKAGE_REPLACED).
+                    try {
+                        adb.exec("setsid sh -c 'sleep 12; am start -n ae.khalid.muawin/.MainActivity --display "
+                                + display + "' >/dev/null 2>&1 </dev/null &");
+                    } catch (Exception ignored) {
+                    }
                     toast("جاري التثبيت… المعاون سيُغلق ويرجع خلال ثوانٍ");
-                    // One shell line: installing kills this process, but adbd keeps running
-                    // the rest of the line, so the cleanup and relaunch still happen.
-                    String res = adb.exec("pm install -r -d " + tmp + " 2>&1 && (rm -f " + tmp
-                            + "; sleep 1; am start -n ae.khalid.muawin/.MainActivity --display " + display + ")");
-                    // Only reached if the install failed (on success this process is gone).
-                    if (res != null && !res.toLowerCase().contains("success")) toast("لم يكتمل التثبيت: " + res.trim());
+
+                    String res;
+                    try {
+                        // Like modern `adb install`: stream the APK straight into the installer.
+                        res = adb.installStreamed(apk);
+                    } catch (Exception streamErr) {
+                        // Fallback: copy to /data/local/tmp (the installer can read it there).
+                        final String tmp = "/data/local/tmp/muawin-update.apk";
+                        try {
+                            adb.push(apk, tmp);
+                        } catch (Exception pushErr) {
+                            throw new Exception(streamErr.getMessage() + " | " + pushErr.getMessage());
+                        }
+                        res = adb.exec("pm install -r -d " + tmp + " 2>&1; rm -f " + tmp);
+                    }
+                    apk.delete();
+                    // Only reached if the install didn't replace us.
+                    if (res == null || !res.toLowerCase().contains("success")) toast("لم يكتمل التثبيت: " + res);
                 } catch (Exception e) {
                     toast("فشل التحديث: " + e.getMessage());
                 }

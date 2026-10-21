@@ -129,11 +129,12 @@ public class AdbClient {
             if (h[0] == A_CLSE) throw new IOException("sync refused");
         }
 
+        java.io.ByteArrayOutputStream resp = new java.io.ByteArrayOutputStream();
         java.io.ByteArrayOutputStream req = new java.io.ByteArrayOutputStream();
         byte[] spec = (remotePath + ",33188").getBytes("UTF-8"); // regular file, mode 0644
         req.write(syncHeader("SEND", spec.length));
         req.write(spec);
-        streamWrite(local, remote, req.toByteArray());
+        streamWrite(local, remote, req.toByteArray(), resp);
 
         java.io.FileInputStream fis = new java.io.FileInputStream(src);
         try {
@@ -143,15 +144,14 @@ public class AdbClient {
                 java.io.ByteArrayOutputStream pkt = new java.io.ByteArrayOutputStream(r + 8);
                 pkt.write(syncHeader("DATA", r));
                 pkt.write(buf, 0, r);
-                streamWrite(local, remote, pkt.toByteArray());
+                streamWrite(local, remote, pkt.toByteArray(), resp);
             }
         } finally {
             fis.close();
         }
-        streamWrite(local, remote, syncHeader("DONE", (int) (System.currentTimeMillis() / 1000)));
+        streamWrite(local, remote, syncHeader("DONE", (int) (System.currentTimeMillis() / 1000)), resp);
 
         // Device answers "OKAY" or "FAIL"+len+message inside WRTE frames.
-        java.io.ByteArrayOutputStream resp = new java.io.ByteArrayOutputStream();
         while (resp.size() < 8) {
             byte[] p = readMessage(h);
             if (h[0] == A_WRTE) {
@@ -163,7 +163,7 @@ public class AdbClient {
         }
         byte[] rb = resp.toByteArray();
         String id = rb.length >= 4 ? new String(rb, 0, 4, "US-ASCII") : "";
-        streamWrite(local, remote, syncHeader("QUIT", 0));
+        streamWrite(local, remote, syncHeader("QUIT", 0), new java.io.ByteArrayOutputStream());
         send(A_CLSE, local, remote, new byte[0]);
         if (!"OKAY".equals(id)) {
             String msg = rb.length > 8 ? new String(rb, 8, rb.length - 8, "UTF-8") : id;
@@ -178,8 +178,12 @@ public class AdbClient {
         return b.array();
     }
 
-    /** Writes bytes on an open stream, honouring ADB flow control (one OKAY per WRTE). */
-    private void streamWrite(int local, int remote, byte[] data) throws IOException {
+    /**
+     * Writes bytes on an open stream, honouring ADB flow control (one OKAY per WRTE).
+     * Anything the device writes back meanwhile is acked and kept in {@code sink}, so an
+     * early error message (sent just before it closes the stream) isn't lost.
+     */
+    private void streamWrite(int local, int remote, byte[] data, java.io.ByteArrayOutputStream sink) throws IOException {
         int off = 0;
         int[] h = new int[4];
         while (off < data.length) {
@@ -188,12 +192,68 @@ public class AdbClient {
             System.arraycopy(data, off, chunk, 0, n);
             send(A_WRTE, local, remote, chunk);
             while (true) {
-                readMessage(h);
+                byte[] p = readMessage(h);
                 if (h[0] == A_OKAY) break;
-                if (h[0] == A_CLSE) throw new IOException("stream closed by device");
+                if (h[0] == A_WRTE) {
+                    sink.write(p, 0, p.length);
+                    send(A_OKAY, h[2], h[1], new byte[0]);
+                } else if (h[0] == A_CLSE) {
+                    send(A_CLSE, h[2], h[1], new byte[0]);
+                    throw new IOException("closed by device: " + printable(sink.toByteArray()));
+                }
             }
             off += n;
         }
+    }
+
+    private static String printable(byte[] b) {
+        String s;
+        try { s = new String(b, "UTF-8"); } catch (Exception e) { s = ""; }
+        s = s.replaceAll("[^\\p{Print}\\p{L}\\s]", "").trim();
+        return s.isEmpty() ? "(no message)" : s;
+    }
+
+    /**
+     * Installs an APK by streaming it into `cmd package install -S` over an exec: stream,
+     * exactly like modern `adb install`. No file is written anywhere, so storage/SELinux
+     * rules don't matter. On success this app is replaced (and its process killed).
+     */
+    public synchronized String installStreamed(java.io.File apk) throws Exception {
+        if (!isConnected()) throw new IOException("not connected");
+        int local = nextId++;
+        send(A_OPEN, local, 0, ("exec:cmd package install -r -d -S " + apk.length() + "\0").getBytes("UTF-8"));
+        int[] h = new int[4];
+        int remote;
+        while (true) {
+            readMessage(h);
+            if (h[0] == A_OKAY) { remote = h[1]; break; }
+            if (h[0] == A_CLSE) throw new IOException("install service refused");
+        }
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        java.io.FileInputStream fis = new java.io.FileInputStream(apk);
+        try {
+            byte[] buf = new byte[Math.min(maxData, 64 * 1024)];
+            int r;
+            while ((r = fis.read(buf)) > 0) {
+                byte[] c = new byte[r];
+                System.arraycopy(buf, 0, c, 0, r);
+                streamWrite(local, remote, c, out);
+            }
+        } finally {
+            fis.close();
+        }
+        // Collect the result ("Success" / "Failure [...]") until the device closes the stream.
+        while (true) {
+            byte[] p = readMessage(h);
+            if (h[0] == A_WRTE) {
+                out.write(p, 0, p.length);
+                send(A_OKAY, h[2], h[1], new byte[0]);
+            } else if (h[0] == A_CLSE) {
+                send(A_CLSE, h[2], h[1], new byte[0]);
+                break;
+            }
+        }
+        return printable(out.toByteArray());
     }
 
     public synchronized void close() {
