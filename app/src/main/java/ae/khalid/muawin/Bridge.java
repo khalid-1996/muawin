@@ -241,9 +241,14 @@ public class Bridge {
                     File dir = activity.getExternalFilesDir(null);
                     File apk = new File(dir, "muawin-update.apk");
                     download(url, apk);
-                    String res = adb.exec("pm install -r -d " + apk.getAbsolutePath() + " 2>&1");
-                    if (res != null && res.toLowerCase().contains("success")) toast("تم التحديث. سيُعاد فتح المعاون");
-                    else toast("لم يكتمل التثبيت: " + (res == null ? "" : res.trim()));
+                    int display = link.homeDisplay() >= 0 ? link.homeDisplay() : currentDisplay();
+                    toast("جاري التثبيت… المعاون سيُغلق ويرجع خلال ثوانٍ");
+                    // One shell line: installing kills this process, but adbd keeps running
+                    // the rest of the line, so the relaunch still happens.
+                    String res = adb.exec("pm install -r -d " + apk.getAbsolutePath()
+                            + " 2>&1 && sleep 1 && am start -n ae.khalid.muawin/.MainActivity --display " + display);
+                    // Only reached if the install failed (on success this process is gone).
+                    if (res != null && !res.toLowerCase().contains("success")) toast("لم يكتمل التثبيت: " + res.trim());
                 } catch (Exception e) {
                     toast("فشل التحديث: " + e.getMessage());
                 }
