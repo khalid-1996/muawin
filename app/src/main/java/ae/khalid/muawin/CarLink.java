@@ -48,6 +48,8 @@ public final class CarLink {
     private volatile String topOnHome = "";
     private volatile long lastReclaim = 0;
     private volatile boolean showPending = false;
+    private volatile String car = "{}";
+    private volatile long lastCarRead = 0;
     private Set<String> systemHomes;
 
     private CarLink(Context c) {
@@ -88,6 +90,9 @@ public final class CarLink {
     public String state() { return adb.isConnected() ? "connected" : state; }
 
     public String lastError() { return lastError; }
+
+    /** Latest car values as JSON (see CarData); "{}" until ADB has read them. */
+    public String car() { return car; }
 
     // ------------------------------------------------------------- home display
 
@@ -138,6 +143,10 @@ public final class CarLink {
                     afterConnect();
                 }
                 guardTick();
+                if (System.currentTimeMillis() - lastCarRead > 8000) {
+                    lastCarRead = System.currentTimeMillis();
+                    car = CarData.parse(adb.exec(CarData.command())).toString();
+                }
                 pause(2000);
             } catch (Throwable e) {
                 adb.close();

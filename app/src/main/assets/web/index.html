@@ -43,9 +43,9 @@
 
   <section class="side">
     <div class="car" id="car">
-      <div><div class="k">البطارية</div><div class="v" id="carBat">—</div><div class="bar"><span id="carBatBar" style="width:0"></span></div></div>
+      <div><div class="k">البطارية</div><div class="v" id="carBat">—</div><div class="bar"><span id="carBatBar" style="width:0"></span></div><div class="note" id="carBatNote"></div></div>
       <div id="tripCell"><div class="k">مشوار اليوم</div><div class="v" id="tripKm">—</div><div class="note" id="tripNote">بانتظار GPS</div></div>
-      <div><div class="k">المقصورة</div><div class="v" id="carCabin">—</div><div class="note" id="carTires">قريباً</div></div>
+      <div><div class="k">المقصورة</div><div class="v" id="carCabin">—</div><div class="note" id="carOutside"></div></div>
     </div>
     <div class="media" id="media">
       <div class="art" id="mediaArt"></div>
@@ -113,6 +113,8 @@
         <p class="small" id="sAdbNow">الحالة: —</p>
         <button class="btn" id="sAdbConnect">إعادة المحاولة الآن</button>
         <p class="small">يرتبط تلقائياً مع كل تشغيل. أول مرة فقط وافق على طلب السماح وفعّل «السماح دائماً».</p>
+
+        <p class="small" id="sCarRaw"></p>
 
         <h3>زر الهوم</h3>
         <label class="row"><input type="checkbox" id="sGuard"> إرجاع المعاون عند الضغط على الهوم</label>
