@@ -201,6 +201,10 @@ public class Bridge {
 
     // ---------------------------------------------------------------- trip
 
+    /** {soc, cabin, outside, evRange, fuelRange, fuelPct, raw{}, at} read from the car over ADB. */
+    @JavascriptInterface
+    public String car() { return link.car(); }
+
     @JavascriptInterface
     public String trip() { return TripTracker.get(activity).json(); }
 

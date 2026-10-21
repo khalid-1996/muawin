@@ -393,18 +393,27 @@
   );
 
   // ------------------------------------------------------------ car info (phase 3: read over ADB)
-  function renderCar(c) {
+  // Car values come from the car itself over ADB (autoservice); dashes until read.
+  let carRaw = null;
+  function renderCar() {
+    let c = null;
+    try { c = A ? JSON.parse(A.car()) : { soc: 78, cabin: 23, outside: 34, evRange: 96, fuelRange: 640 }; } catch (e) {}
     if (!c) return;
-    if (c.battery != null) {
-      $("#carBat").innerHTML = `${n(c.battery)}<small>٪</small>`;
-      $("#carBatBar").style.width = c.battery + "%";
+    carRaw = c.raw || null;
+    if (c.soc != null) {
+      $("#carBat").innerHTML = `${n(c.soc)}<small>٪</small>`;
+      $("#carBatBar").style.width = Math.max(0, Math.min(100, c.soc)) + "%";
+    } else {
+      $("#carBat").textContent = "—";
+      $("#carBatBar").style.width = "0";
     }
-    if (c.cabin != null) { $("#carCabin").textContent = `${n(c.cabin)}°`; }
-    if (c.tiresOk != null) {
-      $("#carTires").innerHTML = c.tiresOk ? "الإطارات <em>سليمة</em>" : "الإطارات <em style='color:var(--live)'>افحصها</em>";
-    }
+    const range = [];
+    if (c.evRange != null) range.push(`كهرباء ${n(c.evRange)} كم`);
+    if (c.fuelRange != null) range.push(`المدى ${n(c.fuelRange)} كم`);
+    $("#carBatNote").textContent = range.join(" · ");
+    $("#carCabin").textContent = c.cabin != null ? `${n(c.cabin)}°` : "—";
+    $("#carOutside").textContent = c.outside != null ? `الخارج ${n(c.outside)}°` : "";
   }
-  window.renderCar = renderCar; // the Android side will call this once car data is wired in
 
   // ------------------------------------------------------------ trip (GPS, new trip every car start)
   function km(x) {
@@ -475,6 +484,7 @@
     else if (i.state !== "connected") g = `مثبّت على الشاشة ${n(i.home)}. الحماية تعمل عند ربط ADB.`;
     else g = `مثبّت على الشاشة ${n(i.home)}. الظاهر عليها الآن: ${linkTop || "—"}`;
     $("#sGuardNow").textContent = g;
+    if (carRaw) $("#sCarRaw").textContent = "قراءات السيارة: " + Object.entries(carRaw).map(([k, v]) => `${k}=${v}`).join("  ");
     $("#sMarkHome").hidden = !(i.state === "connected" && linkTop && linkTop !== "ae.khalid.muawin" && !i.topIsHome);
   }
 
@@ -558,6 +568,7 @@
   renderMedia();
   checkUpdate(false);
   renderTrip();
+  renderCar();
 
   setInterval(tickClock, 1000);
   setInterval(renderMedia, 1000);
@@ -567,4 +578,5 @@
   setInterval(checkUpdate, 6 * 60 * 60 * 1000);
   setInterval(() => { if (!$("#settings").hidden) renderAdb(); }, 2000);
   setInterval(renderTrip, 2000);
+  setInterval(renderCar, 3000);
 })();
