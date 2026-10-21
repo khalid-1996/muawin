@@ -44,7 +44,7 @@
   <section class="side">
     <div class="car" id="car">
       <div><div class="k">البطارية</div><div class="v" id="carBat">—</div><div class="bar"><span id="carBatBar" style="width:0"></span></div></div>
-      <div><div class="k">المدى</div><div class="v" id="carRange">—</div><div class="note" id="carRangeNote">قريباً</div></div>
+      <div id="tripCell"><div class="k">مشوار اليوم</div><div class="v" id="tripKm">—</div><div class="note" id="tripNote">بانتظار GPS</div></div>
       <div><div class="k">المقصورة</div><div class="v" id="carCabin">—</div><div class="note" id="carTires">قريباً</div></div>
     </div>
     <div class="media" id="media">
@@ -106,13 +106,18 @@
         <label>رقم الفريق في TheSportsDB<input id="sTeam" inputmode="numeric" placeholder="اتركه فارغاً لإخفاء المباريات"></label>
         <h3>الوسائط</h3>
         <button class="btn" id="sMediaPerm">تفعيل عرض الوسائط</button>
-        <p class="small">إذا ما فتحت الشاشة، نفّذ بالـ ADB:<br><code>cmd notification allow_listener ae.khalid.muawin/ae.khalid.muawin.MediaListener</code></p>
+        <p class="small">يتفعّل تلقائياً بعد ربط ADB.</p>
       </div>
       <div class="col">
         <h3>النظام (ADB)</h3>
-        <p class="small" id="sAdbNow">الحالة: غير مربوط</p>
-        <button class="btn" id="sAdbConnect">ربط ADB</button>
-        <p class="small">يسمح بفتح المعاون على شاشة الراكب وتثبيت التحديثات تلقائياً. يظهر طلب سماح مرة واحدة فقط.</p>
+        <p class="small" id="sAdbNow">الحالة: —</p>
+        <button class="btn" id="sAdbConnect">إعادة المحاولة الآن</button>
+        <p class="small">يرتبط تلقائياً مع كل تشغيل. أول مرة فقط وافق على طلب السماح وفعّل «السماح دائماً».</p>
+
+        <h3>زر الهوم</h3>
+        <label class="row"><input type="checkbox" id="sGuard"> إرجاع المعاون عند الضغط على الهوم</label>
+        <p class="small" id="sGuardNow"></p>
+        <button class="btn" id="sMarkHome" hidden>اعتبر هذا التطبيق واجهة النظام</button>
 
         <h3>التحديثات</h3>
         <p class="small" id="sVerNow"></p>

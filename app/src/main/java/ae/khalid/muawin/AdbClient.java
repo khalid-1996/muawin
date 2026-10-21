@@ -74,6 +74,7 @@ public class AdbClient {
             byte[] payload = readMessage(h);
             if (h[0] == A_CNXN) {
                 if (h[2] > 0) maxData = h[2];
+                sock.setSoTimeout(15000); // after auth: notice a dead link quickly
                 return;
             } else if (h[0] == A_AUTH && h[1] == AUTH_TOKEN) {
                 if (!sentSig) {

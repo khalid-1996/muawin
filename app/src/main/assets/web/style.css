@@ -133,3 +133,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   border:1px solid var(--gold);border-radius:18px;padding:12px 16px 12px 24px;font-size:21px}
 .banner .go{background:var(--gold);color:#1b130c;border-radius:12px;padding:9px 22px;font-weight:500}
 .banner .x{width:40px;height:40px;border-radius:50%;border:1px solid var(--gold-dim);color:var(--muted);font-size:24px;line-height:1}
+
+.form label.row{display:flex;align-items:center;gap:12px;font-size:20px;color:var(--ivory);margin-bottom:8px}
+.form label.row input{width:26px;height:26px;margin:0;accent-color:var(--gold);flex:none}
+#tripCell{cursor:pointer}
