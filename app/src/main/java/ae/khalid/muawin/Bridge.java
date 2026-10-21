@@ -40,13 +40,14 @@ public class Bridge {
 
     private final Activity activity;
     private final WebView web;
+    private final CarLink link;
     private final AdbClient adb;
-    private volatile String adbState = "off"; // off | connecting | connected | error
 
     Bridge(Activity activity, WebView web) {
         this.activity = activity;
         this.web = web;
-        this.adb = new AdbClient(activity.getApplicationContext());
+        this.link = CarLink.get(activity);
+        this.adb = link.adb;
     }
 
     // ---------------------------------------------------------------- apps
@@ -150,6 +151,8 @@ public class Bridge {
     /** Re-opens the launcher on another display. Uses ADB (reliable on DiLink), falls back to the system API. */
     @JavascriptInterface
     public void moveTo(final int displayId) {
+        link.setHomeDisplay(displayId);
+        if (displayId == currentDisplay()) { toast("تم تثبيت المعاون على هذه الشاشة"); return; }
         if (adb.isConnected()) {
             runAdb("am start -n ae.khalid.muawin/.MainActivity --display " + displayId, "تم النقل للشاشة " + displayId);
             return;
@@ -176,30 +179,30 @@ public class Bridge {
     // ---------------------------------------------------------------- ADB
 
     @JavascriptInterface
-    public String adbStatus() {
-        if (adb.isConnected()) return "connected";
-        return adbState;
-    }
+    public String adbStatus() { return link.state(); }
 
-    /** Connects to the car's own adbd on 127.0.0.1:5555 (shows the one-time approval prompt). */
+    /** ADB is managed in the background (auto-connect + reconnect); this just retries now. */
     @JavascriptInterface
-    public void adbConnect() {
-        if ("connecting".equals(adbState)) return;
-        adbState = "connecting";
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    adb.connect("127.0.0.1", 5555);
-                    adbState = "connected";
-                    toast("تم ربط ADB");
-                } catch (Exception e) {
-                    adbState = "error";
-                    toast("فشل ربط ADB: " + e.getMessage());
-                }
-            }
-        }, "adb-connect").start();
-    }
+    public void adbConnect() { link.kick(); }
+
+    /** {state, error, home, guard, top, topIsHome, homes[]} for the settings page. */
+    @JavascriptInterface
+    public String linkInfo() { return link.info(); }
+
+    @JavascriptInterface
+    public void setGuard(boolean on) { link.setGuard(on); }
+
+    /** Treat a package as the system's home on the pinned screen (if auto-detection missed it). */
+    @JavascriptInterface
+    public void markHome(String pkg) { link.markHome(pkg); toast("سيُستبدل " + pkg + " بالمعاون"); }
+
+    // ---------------------------------------------------------------- trip
+
+    @JavascriptInterface
+    public String trip() { return TripTracker.get(activity).json(); }
+
+    @JavascriptInterface
+    public void tripReset() { TripTracker.get(activity).reset(); toast("بدأ مشوار جديد"); }
 
     /** Runs an arbitrary shell line over ADB (for power users / debugging from the settings page). */
     @JavascriptInterface

@@ -399,13 +399,31 @@
       $("#carBat").innerHTML = `${n(c.battery)}<small>٪</small>`;
       $("#carBatBar").style.width = c.battery + "%";
     }
-    if (c.range != null) { $("#carRange").innerHTML = `${n(c.range)}<small>كم</small>`; $("#carRangeNote").textContent = ""; }
     if (c.cabin != null) { $("#carCabin").textContent = `${n(c.cabin)}°`; }
     if (c.tiresOk != null) {
       $("#carTires").innerHTML = c.tiresOk ? "الإطارات <em>سليمة</em>" : "الإطارات <em style='color:var(--live)'>افحصها</em>";
     }
   }
   window.renderCar = renderCar; // the Android side will call this once car data is wired in
+
+  // ------------------------------------------------------------ trip (GPS, new trip every car start)
+  function km(x) {
+    const s = x < 10 ? x.toFixed(1) : String(Math.round(x));
+    return n(s).replace(".", "٫");
+  }
+  function sinceText(ms) {
+    const m = Math.floor(ms / 60000);
+    if (m < 1) return "بدأ الآن";
+    return "منذ " + arDuration(m).replace(/^بعد /, "");
+  }
+  function renderTrip() {
+    let t = null;
+    try { t = A ? JSON.parse(A.trip()) : { km: 12.4, elapsed: 25 * 60000, tracking: true, fix: true }; } catch (e) {}
+    if (!t) return;
+    $("#tripKm").innerHTML = `${km(t.km || 0)}<small>كم</small>`;
+    $("#tripNote").textContent = !t.tracking ? "الموقع غير مفعّل" : (!t.fix && !(t.km > 0)) ? "بانتظار GPS" : sinceText(t.elapsed || 0);
+  }
+  longPress($("#tripCell"), 900, () => { if (A) A.tripReset(); setTimeout(renderTrip, 200); });
 
   // ------------------------------------------------------------ ADB + updates
   const REPO = "khalid-1996/muawin";
@@ -441,17 +459,27 @@
     }
   }
 
-  const ADB_AR = { connected: "مربوط", connecting: "جاري الربط…", error: "فشل الربط", off: "غير مربوط" };
+  const ADB_AR = { connected: "مربوط ✓", connecting: "جاري الربط… (وافق على طلب السماح إن ظهر)", error: "غير مربوط، يعيد المحاولة تلقائياً", off: "غير مربوط" };
+  let linkTop = "";
   function renderAdb() {
     if (!A) { $("#sAdbNow").textContent = "الحالة: غير متاح في المعاينة"; return; }
-    const st = A.adbStatus();
-    $("#sAdbNow").textContent = "الحالة: " + (ADB_AR[st] || st);
-    $("#sAdbConnect").textContent = st === "connected" ? "مربوط ✓" : "ربط ADB";
+    let i = {};
+    try { i = JSON.parse(A.linkInfo()); } catch (e) {}
+    $("#sAdbNow").textContent = "الحالة: " + (ADB_AR[i.state] || i.state || "—") + (i.state === "error" && i.error ? ` (${i.error})` : "");
+    $("#sAdbConnect").hidden = i.state === "connected";
+    $("#sGuard").checked = !!i.guard;
+    linkTop = i.top || "";
+    let g;
+    if (i.home == null || i.home < 0) g = "المعاون غير مثبّت على شاشة بعد. اختر شاشة الراكب من «شاشة العرض».";
+    else if (i.state !== "connected") g = `مثبّت على الشاشة ${n(i.home)}. الحماية تعمل عند ربط ADB.`;
+    else g = `مثبّت على الشاشة ${n(i.home)}. الظاهر عليها الآن: ${linkTop || "—"}`;
+    $("#sGuardNow").textContent = g;
+    $("#sMarkHome").hidden = !(i.state === "connected" && linkTop && linkTop !== "ae.khalid.muawin" && !i.topIsHome);
   }
 
-  $("#sAdbConnect").addEventListener("click", () => {
-    if (A) { A.adbConnect(); renderAdb(); setTimeout(renderAdb, 1500); }
-  });
+  $("#sAdbConnect").addEventListener("click", () => { if (A) { A.adbConnect(); setTimeout(renderAdb, 1500); } });
+  $("#sGuard").addEventListener("change", (e) => { if (A) A.setGuard(e.target.checked); });
+  $("#sMarkHome").addEventListener("click", () => { if (A && linkTop) { A.markHome(linkTop); renderAdb(); } });
   $("#sCheckUpdate").addEventListener("click", () => checkUpdate(true));
   $("#bannerBtn").addEventListener("click", () => { if (A && updateUrl) A.installUpdate(updateUrl); });
   $("#bannerX").addEventListener("click", () => { $("#banner").hidden = true; });
@@ -477,16 +505,18 @@
     box.innerHTML = "";
     let list = [], cur = 0;
     try { list = A ? JSON.parse(A.displays()) : [{ id: 0, name: "Built-in", w: 1920, h: 1080 }]; cur = A ? A.currentDisplay() : 0; } catch (e) {}
-    $("#sDisplayNow").textContent = `المعاون يعمل الآن على الشاشة رقم ${n(cur)}. اضغط على شاشة لنقله لها.`;
+    let pinned = -1;
+    try { pinned = A ? JSON.parse(A.linkInfo()).home : -1; } catch (e) {}
+    $("#sDisplayNow").textContent = `المعاون الآن على الشاشة ${n(cur)}. اضغط على شاشة لتثبيته عليها (●= المثبّتة).`;
     list.forEach((d) => {
       const b = document.createElement("button");
-      b.className = "btn" + (d.id === cur ? " cur" : "");
+      b.className = "btn" + (d.id === pinned ? " cur" : "");
       const label = document.createElement("span");
-      label.textContent = `شاشة ${n(d.id)}: `;
+      label.textContent = `${d.id === pinned ? "● " : ""}شاشة ${n(d.id)}: `;
       const meta = document.createElement("bdi");
       meta.textContent = `${d.name} (${d.w}×${d.h})`;
       b.append(label, meta);
-      b.addEventListener("click", () => { if (d.id !== cur && A) A.moveTo(d.id); });
+      b.addEventListener("click", () => { if (A) { A.moveTo(d.id); setTimeout(openSettings, 400); } });
       box.appendChild(b);
     });
     $("#settings").hidden = false;
@@ -525,7 +555,7 @@
   loadMatch().then(renderDock);
   renderMedia();
   checkUpdate(false);
-  if (A && A.adbStatus() === "off") A.adbConnect(); // one-time approval, then silent
+  renderTrip();
 
   setInterval(tickClock, 1000);
   setInterval(renderMedia, 1000);
@@ -534,4 +564,5 @@
   setInterval(loadPrayers, 6 * 60 * 60 * 1000);
   setInterval(checkUpdate, 6 * 60 * 60 * 1000);
   setInterval(() => { if (!$("#settings").hidden) renderAdb(); }, 2000);
+  setInterval(renderTrip, 2000);
 })();
