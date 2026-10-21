@@ -468,6 +468,7 @@
     $("#sAdbNow").textContent = "الحالة: " + (ADB_AR[i.state] || i.state || "—") + (i.state === "error" && i.error ? ` (${i.error})` : "");
     $("#sAdbConnect").hidden = i.state === "connected";
     $("#sGuard").checked = !!i.guard;
+    $("#sAuto").checked = i.autostart !== false;
     linkTop = i.top || "";
     let g;
     if (i.home == null || i.home < 0) g = "المعاون غير مثبّت على شاشة بعد. اختر شاشة الراكب من «شاشة العرض».";
@@ -479,6 +480,7 @@
 
   $("#sAdbConnect").addEventListener("click", () => { if (A) { A.adbConnect(); setTimeout(renderAdb, 1500); } });
   $("#sGuard").addEventListener("change", (e) => { if (A) A.setGuard(e.target.checked); });
+  $("#sAuto").addEventListener("change", (e) => { if (A) A.setAutoStart(e.target.checked); });
   $("#sMarkHome").addEventListener("click", () => { if (A && linkTop) { A.markHome(linkTop); renderAdb(); } });
   $("#sCheckUpdate").addEventListener("click", () => checkUpdate(true));
   $("#bannerBtn").addEventListener("click", () => { if (A && updateUrl) A.installUpdate(updateUrl); });

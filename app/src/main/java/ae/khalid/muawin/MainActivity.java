@@ -37,6 +37,7 @@ public class MainActivity extends Activity {
         int here = currentDisplayId();
         if (link.homeDisplay() < 0 && here != 0) link.setHomeDisplay(here);
         link.start();
+        LinkService.start(this);
 
         startTrip();
 

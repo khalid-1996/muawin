@@ -192,6 +192,9 @@ public class Bridge {
     @JavascriptInterface
     public void setGuard(boolean on) { link.setGuard(on); }
 
+    @JavascriptInterface
+    public void setAutoStart(boolean on) { link.setAutoStart(on); }
+
     /** Treat a package as the system's home on the pinned screen (if auto-detection missed it). */
     @JavascriptInterface
     public void markHome(String pkg) { link.markHome(pkg); toast("سيُستبدل " + pkg + " بالمعاون"); }

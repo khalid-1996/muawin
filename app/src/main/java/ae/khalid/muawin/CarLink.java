@@ -47,6 +47,7 @@ public final class CarLink {
     private volatile String lastError = "";
     private volatile String topOnHome = "";
     private volatile long lastReclaim = 0;
+    private volatile boolean showPending = false;
     private Set<String> systemHomes;
 
     private CarLink(Context c) {
@@ -72,6 +73,17 @@ public final class CarLink {
     }
 
     public boolean connected() { return adb.isConnected(); }
+
+    /** Ask for المعاون to be (re)opened on its pinned screen as soon as ADB allows (car start/wake). */
+    public void requestShow() {
+        if (!autoStart()) return;
+        showPending = true;
+        kick();
+    }
+
+    public boolean autoStart() { return sp.getBoolean("autostart", true); }
+
+    public void setAutoStart(boolean on) { sp.edit().putBoolean("autostart", on).apply(); }
 
     public String state() { return adb.isConnected() ? "connected" : state; }
 
@@ -100,6 +112,7 @@ public final class CarLink {
             o.put("error", lastError);
             o.put("home", homeDisplay());
             o.put("guard", guardOn());
+            o.put("autostart", autoStart());
             o.put("top", topOnHome);
             o.put("topIsHome", topOnHome.length() > 0 && isSystemHome(topOnHome));
             JSONArray a = new JSONArray();
@@ -147,6 +160,12 @@ public final class CarLink {
         adb.exec("cmd notification allow_listener " + SELF + "/" + SELF + ".MediaListener");
         adb.exec("pm grant " + SELF + " android.permission.ACCESS_FINE_LOCATION");
         adb.exec("pm grant " + SELF + " android.permission.ACCESS_COARSE_LOCATION");
+        // Keep the background link alive: no battery optimisation, background running allowed,
+        // and "display over other apps" so a direct start works even without ADB later.
+        adb.exec("cmd deviceidle whitelist +" + SELF);
+        adb.exec("appops set " + SELF + " RUN_IN_BACKGROUND allow");
+        adb.exec("appops set " + SELF + " RUN_ANY_IN_BACKGROUND allow");
+        adb.exec("appops set " + SELF + " SYSTEM_ALERT_WINDOW allow");
         TripTracker.get(ctx).start();
     }
 
@@ -156,11 +175,27 @@ public final class CarLink {
         String out = adb.exec("dumpsys activity activities | grep -E 'Display #|ResumedActivity'");
         String pkg = resumedOn(out, home);
         topOnHome = pkg == null ? "" : pkg;
-        if (!guardOn() || pkg == null || SELF.equals(pkg) || !isSystemHome(pkg)) return;
         long now = System.currentTimeMillis();
-        if (now - lastReclaim < 2500) return; // don't hammer if the start fails
+
+        // Car started / woke up: open on the pinned screen unless we're already there.
+        if (showPending) {
+            showPending = false;
+            if (!SELF.equals(pkg)) { lastReclaim = now; show(home); }
+            return;
+        }
+        if (!guardOn() || SELF.equals(pkg)) return;
+        // Home pressed (system home on our screen) -> come back quickly.
+        // Nothing at all on our screen (e.g. after wake) -> open us, but more gently.
+        boolean sysHome = pkg != null && isSystemHome(pkg);
+        boolean empty = pkg == null && autoStart();
+        if (!sysHome && !empty) return;
+        if (now - lastReclaim < (sysHome ? 2500 : 10000)) return; // don't hammer if the start fails
         lastReclaim = now;
-        adb.exec("am start -n " + SELF + "/.MainActivity --display " + home);
+        show(home);
+    }
+
+    private void show(int display) throws Exception {
+        adb.exec("am start -n " + SELF + "/.MainActivity --display " + display);
     }
 
     /** The package resumed on the given display, from `dumpsys activity activities`. */
