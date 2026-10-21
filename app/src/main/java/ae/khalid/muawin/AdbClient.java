@@ -112,6 +112,90 @@ public class AdbClient {
         return sb.toString();
     }
 
+    /**
+     * Pushes a local file to the car (like `adb push`) using the ADB sync protocol.
+     * Needed because the installer can't read files on app external storage (SELinux),
+     * but it can read /data/local/tmp.
+     */
+    public synchronized void push(java.io.File src, String remotePath) throws Exception {
+        if (!isConnected()) throw new IOException("not connected");
+        int local = nextId++;
+        send(A_OPEN, local, 0, "sync:\0".getBytes("UTF-8"));
+        int[] h = new int[4];
+        int remote;
+        while (true) {
+            readMessage(h);
+            if (h[0] == A_OKAY) { remote = h[1]; break; }
+            if (h[0] == A_CLSE) throw new IOException("sync refused");
+        }
+
+        java.io.ByteArrayOutputStream req = new java.io.ByteArrayOutputStream();
+        byte[] spec = (remotePath + ",33188").getBytes("UTF-8"); // regular file, mode 0644
+        req.write(syncHeader("SEND", spec.length));
+        req.write(spec);
+        streamWrite(local, remote, req.toByteArray());
+
+        java.io.FileInputStream fis = new java.io.FileInputStream(src);
+        try {
+            byte[] buf = new byte[64 * 1024];
+            int r;
+            while ((r = fis.read(buf)) > 0) {
+                java.io.ByteArrayOutputStream pkt = new java.io.ByteArrayOutputStream(r + 8);
+                pkt.write(syncHeader("DATA", r));
+                pkt.write(buf, 0, r);
+                streamWrite(local, remote, pkt.toByteArray());
+            }
+        } finally {
+            fis.close();
+        }
+        streamWrite(local, remote, syncHeader("DONE", (int) (System.currentTimeMillis() / 1000)));
+
+        // Device answers "OKAY" or "FAIL"+len+message inside WRTE frames.
+        java.io.ByteArrayOutputStream resp = new java.io.ByteArrayOutputStream();
+        while (resp.size() < 8) {
+            byte[] p = readMessage(h);
+            if (h[0] == A_WRTE) {
+                resp.write(p);
+                send(A_OKAY, h[2], h[1], new byte[0]);
+            } else if (h[0] == A_CLSE) {
+                break;
+            }
+        }
+        byte[] rb = resp.toByteArray();
+        String id = rb.length >= 4 ? new String(rb, 0, 4, "US-ASCII") : "";
+        streamWrite(local, remote, syncHeader("QUIT", 0));
+        send(A_CLSE, local, remote, new byte[0]);
+        if (!"OKAY".equals(id)) {
+            String msg = rb.length > 8 ? new String(rb, 8, rb.length - 8, "UTF-8") : id;
+            throw new IOException("push failed: " + msg);
+        }
+    }
+
+    private static byte[] syncHeader(String id, int len) throws IOException {
+        ByteBuffer b = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN);
+        b.put(id.getBytes("US-ASCII"));
+        b.putInt(len);
+        return b.array();
+    }
+
+    /** Writes bytes on an open stream, honouring ADB flow control (one OKAY per WRTE). */
+    private void streamWrite(int local, int remote, byte[] data) throws IOException {
+        int off = 0;
+        int[] h = new int[4];
+        while (off < data.length) {
+            int n = Math.min(maxData, data.length - off);
+            byte[] chunk = new byte[n];
+            System.arraycopy(data, off, chunk, 0, n);
+            send(A_WRTE, local, remote, chunk);
+            while (true) {
+                readMessage(h);
+                if (h[0] == A_OKAY) break;
+                if (h[0] == A_CLSE) throw new IOException("stream closed by device");
+            }
+            off += n;
+        }
+    }
+
     public synchronized void close() {
         try { if (sock != null) sock.close(); } catch (Exception ignored) {}
         sock = null; in = null; out = null;
