@@ -49,6 +49,7 @@ public final class CarLink {
     private volatile long lastReclaim = 0;
     private volatile boolean showPending = false;
     private volatile String car = "{}";
+    private final CarData carData = new CarData();
     private volatile long lastCarRead = 0;
     private Set<String> systemHomes;
 
@@ -143,9 +144,10 @@ public final class CarLink {
                     afterConnect();
                 }
                 guardTick();
-                if (System.currentTimeMillis() - lastCarRead > 8000) {
+                if (System.currentTimeMillis() - lastCarRead > 5000) {
                     lastCarRead = System.currentTimeMillis();
-                    car = CarData.parse(adb.exec(CarData.command())).toString();
+                    if (!carData.hasCatalog()) loadFidCatalog();
+                    car = carData.parse(adb.exec(carData.command())).toString();
                 }
                 pause(2000);
             } catch (Throwable e) {
@@ -176,6 +178,20 @@ public final class CarLink {
         adb.exec("appops set " + SELF + " RUN_ANY_IN_BACKGROUND allow");
         adb.exec("appops set " + SELF + " SYSTEM_ALERT_WINDOW allow");
         TripTracker.get(ctx).start();
+    }
+
+    /**
+     * Reads this car's fid catalog by running FidDump from our own APK under app_process
+     * (shell user, where the BYD framework classes can be reflected). Done once per process.
+     */
+    private void loadFidCatalog() {
+        try {
+            String apk = ctx.getApplicationInfo().sourceDir;
+            String out = adb.exec("CLASSPATH=" + apk + " app_process /system/bin " + SELF + ".FidDump 2>/dev/null");
+            carData.loadCatalog(out == null ? "" : out);
+        } catch (Exception e) {
+            carData.loadCatalog(""); // fall back to the built-in numbers
+        }
     }
 
     private void guardTick() throws Exception {
