@@ -49,7 +49,7 @@ public final class CarLink {
     private volatile long lastReclaim = 0;
     private volatile boolean showPending = false;
     private volatile String car = "{}";
-    private final CarData carData = new CarData();
+    private final CarData carData;
     private volatile long lastCarRead = 0;
     private Set<String> systemHomes;
 
@@ -57,6 +57,7 @@ public final class CarLink {
         ctx = c;
         adb = new AdbClient(c);
         sp = c.getSharedPreferences("link", Context.MODE_PRIVATE);
+        carData = new CarData(c.getSharedPreferences("car", Context.MODE_PRIVATE));
     }
 
     public void start() {
@@ -144,7 +145,7 @@ public final class CarLink {
                     afterConnect();
                 }
                 guardTick();
-                if (System.currentTimeMillis() - lastCarRead > 5000) {
+                if (System.currentTimeMillis() - lastCarRead > 15000) {
                     lastCarRead = System.currentTimeMillis();
                     if (!carData.hasCatalog()) loadFidCatalog();
                     car = carData.parse(adb.exec(carData.command())).toString();

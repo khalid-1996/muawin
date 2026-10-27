@@ -208,6 +208,44 @@ public class Bridge {
     @JavascriptInterface
     public String trip() { return TripTracker.get(activity).json(); }
 
+    // ---------------------------------------------------------------- cloud (MongoDB server)
+
+    /** {url, hasKey, queued, status, lastOk} */
+    @JavascriptInterface
+    public String cloudInfo() { return CloudSync.get(activity).info(); }
+
+    @JavascriptInterface
+    public void cloudConfigure(String url, String key) {
+        CloudSync.get(activity).configure(url, key);
+        cloudSyncNow();
+    }
+
+    @JavascriptInterface
+    public void cloudSyncNow() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() { CloudSync.get(activity).syncOnce(); }
+        }, "cloud-now").start();
+    }
+
+    // ---------------------------------------------------------------- quit
+
+    /**
+     * Closes المعاون completely: stops the background service (no auto-reopen, no Home guard)
+     * and ends the process. It starts again on the next car start, or when opened by hand.
+     */
+    @JavascriptInterface
+    public void quitApp() {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.stopService(new Intent(activity, LinkService.class));
+                activity.finishAndRemoveTask();
+                android.os.Process.killProcess(android.os.Process.myPid());
+            }
+        });
+    }
+
     @JavascriptInterface
     public void tripReset() { TripTracker.get(activity).reset(); toast("بدأ مشوار جديد"); }
 

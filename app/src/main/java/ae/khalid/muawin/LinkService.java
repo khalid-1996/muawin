@@ -54,6 +54,7 @@ public class LinkService extends Service {
 
         CarLink.get(this).start();
         TripTracker.get(this).start();
+        CloudSync.get(this).start();
     }
 
     @Override

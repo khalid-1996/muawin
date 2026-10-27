@@ -395,6 +395,13 @@
   // ------------------------------------------------------------ car info (phase 3: read over ADB)
   // Car values come from the car itself over ADB (autoservice); dashes until read.
   let carRaw = null;
+  function ageText(sec) {
+    const m = Math.round(sec / 60);
+    if (m < 60) return arDuration(m).replace(/^بعد /, "");
+    const h = Math.round(m / 60);
+    if (h < 48) return arDuration(h * 60).replace(/^بعد /, "");
+    return `${n(Math.round(h / 24))} يوم`;
+  }
   function renderCar() {
     let c = null;
     try { c = A ? JSON.parse(A.car()) : { soc: 78, cabin: 23, outside: 34, evRange: 96, fuelRange: 640 }; } catch (e) {}
@@ -410,6 +417,8 @@
     const range = [];
     if (c.evRange != null) range.push(`كهرباء ${n(c.evRange)} كم`);
     if (c.fuelRange != null) range.push(`المدى ${n(c.fuelRange)} كم`);
+    // An old battery reading stays on screen, marked with its age.
+    if (c.soc != null && c.socAge > 300) range.unshift(`آخر قراءة قبل ${ageText(c.socAge)}`);
     $("#carBatNote").textContent = range.join(" · ");
     $("#carCabin").textContent = c.cabin != null ? `${n(c.cabin)}°` : "—";
     $("#carOutside").textContent = c.outside != null ? `الخارج ${n(c.outside)}°` : "";
@@ -427,12 +436,11 @@
   }
   function renderTrip() {
     let t = null;
-    try { t = A ? JSON.parse(A.trip()) : { km: 12.4, elapsed: 25 * 60000, tracking: true, fix: true }; } catch (e) {}
+    try { t = A ? JSON.parse(A.trip()) : { km: 42.7, tracking: true, fix: true }; } catch (e) {}
     if (!t) return;
     $("#tripKm").innerHTML = `${km(t.km || 0)}<small>كم</small>`;
-    $("#tripNote").textContent = !t.tracking ? "الموقع غير مفعّل" : (!t.fix && !(t.km > 0)) ? "بانتظار GPS" : sinceText(t.elapsed || 0);
+    $("#tripNote").textContent = !t.tracking ? "الموقع غير مفعّل" : (!t.fix && !(t.km > 0)) ? "بانتظار GPS" : "منذ منتصف الليل";
   }
-  longPress($("#tripCell"), 900, () => { if (A) A.tripReset(); setTimeout(renderTrip, 200); });
 
   // ------------------------------------------------------------ ADB + updates
   const REPO = "khalid-1996/muawin";
@@ -488,6 +496,32 @@
     $("#sMarkHome").hidden = !(i.state === "connected" && linkTop && linkTop !== "ae.khalid.muawin" && !i.topIsHome);
   }
 
+  function renderCloud() {
+    if (!A) return;
+    let i = {};
+    try { i = JSON.parse(A.cloudInfo()); } catch (e) {}
+    if (document.activeElement !== $("#sCloudUrl")) $("#sCloudUrl").value = i.url || "";
+    if (!i.url) { $("#sCloudNow").textContent = `غير مفعّل: البيانات تُحفظ في السيارة فقط (${n(i.queued || 0)} نقطة بانتظار الإرسال).`; return; }
+    const last = i.lastOk ? new Date(i.lastOk).toLocaleTimeString("ar", { hour: "numeric", minute: "2-digit" }) : "—";
+    $("#sCloudNow").textContent = `${i.status || "—"} · آخر نجاح ${last} · بانتظار الإرسال ${n(i.queued || 0)}`;
+  }
+  $("#sCloudSave").addEventListener("click", () => {
+    if (!A) return;
+    const url = $("#sCloudUrl").value.trim();
+    if (url && !/^https?:\/\//.test(url)) { toast("الرابط لازم يبدأ بـ https://"); return; }
+    A.cloudConfigure(url, $("#sCloudKey").value);
+    $("#sCloudKey").value = "";
+    toast(url ? "تم الحفظ، جاري المزامنة" : "أُوقف الإرسال للسيرفر");
+    setTimeout(renderCloud, 2500);
+  });
+  $("#sQuit").addEventListener("click", () => {
+    if (!A) return;
+    if ($("#sQuit").dataset.armed) { A.quitApp(); return; }
+    $("#sQuit").dataset.armed = "1";
+    $("#sQuit").textContent = "اضغط مرة ثانية للتأكيد";
+    setTimeout(() => { delete $("#sQuit").dataset.armed; $("#sQuit").textContent = "إغلاق المعاون بالكامل"; }, 4000);
+  });
+
   $("#sAdbConnect").addEventListener("click", () => { if (A) { A.adbConnect(); setTimeout(renderAdb, 1500); } });
   $("#sGuard").addEventListener("change", (e) => { if (A) A.setGuard(e.target.checked); });
   $("#sAuto").addEventListener("change", (e) => { if (A) A.setAutoStart(e.target.checked); });
@@ -512,6 +546,7 @@
     $("#sTeam").value = cfg.team;
     $("#ver").textContent = A ? "الإصدار " + A.version() : "";
     renderAdb();
+    renderCloud();
     $("#sVerNow").textContent = "الحالي " + (A ? A.version() : "1.0.0");
     const box = $("#sDisplays");
     box.innerHTML = "";
@@ -576,7 +611,7 @@
   setInterval(loadMatch, 15 * 60 * 1000);
   setInterval(loadPrayers, 6 * 60 * 60 * 1000);
   setInterval(checkUpdate, 6 * 60 * 60 * 1000);
-  setInterval(() => { if (!$("#settings").hidden) renderAdb(); }, 2000);
+  setInterval(() => { if (!$("#settings").hidden) { renderAdb(); renderCloud(); } }, 2000);
   setInterval(renderTrip, 2000);
   setInterval(renderCar, 3000);
 })();

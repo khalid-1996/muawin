@@ -44,7 +44,7 @@
   <section class="side">
     <div class="car" id="car">
       <div><div class="k">البطارية</div><div class="v" id="carBat">—</div><div class="bar"><span id="carBatBar" style="width:0"></span></div><div class="note" id="carBatNote"></div></div>
-      <div id="tripCell"><div class="k">مشوار اليوم</div><div class="v" id="tripKm">—</div><div class="note" id="tripNote">بانتظار GPS</div></div>
+      <div id="tripCell"><div class="k">مسافة اليوم</div><div class="v" id="tripKm">—</div><div class="note" id="tripNote">بانتظار GPS</div></div>
       <div><div class="k">المقصورة</div><div class="v" id="carCabin">—</div><div class="note" id="carOutside"></div></div>
     </div>
     <div class="media" id="media">
@@ -107,6 +107,16 @@
         <h3>الوسائط</h3>
         <button class="btn" id="sMediaPerm">تفعيل عرض الوسائط</button>
         <p class="small">يتفعّل تلقائياً بعد ربط ADB.</p>
+
+        <h3>السيرفر (MongoDB)</h3>
+        <label>رابط السيرفر<input id="sCloudUrl" dir="ltr" placeholder="https://car.example.com"></label>
+        <label>مفتاح API<input id="sCloudKey" dir="ltr" type="password" placeholder="CAR_API_KEY"></label>
+        <button class="btn" id="sCloudSave">حفظ والمزامنة الآن</button>
+        <p class="small" id="sCloudNow">غير مفعّل: البيانات تُحفظ في السيارة فقط.</p>
+
+        <h3>المعاون</h3>
+        <button class="btn danger" id="sQuit">إغلاق المعاون بالكامل</button>
+        <p class="small">يوقف الخدمة الخلفية وزر الهوم. يرجع مع تشغيل السيارة القادم أو عند فتحه يدوياً.</p>
       </div>
       <div class="col">
         <h3>النظام (ADB)</h3>

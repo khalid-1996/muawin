@@ -1,5 +1,7 @@
 package ae.khalid.muawin;
 
+import android.content.SharedPreferences;
+
 import org.json.JSONObject;
 
 import java.util.ArrayList;
@@ -46,12 +48,30 @@ final class CarData {
     private static final Pattern PARCEL = Pattern.compile("Parcel\\(\\s*00000000\\s+([0-9a-fA-F]{8})");
     private static final int FEATURE_LINK_ERROR = 0x0000FFFF, NOT_INIT_20 = 0x000FFFFF,
             WRONG_TX = -10013, WRONG_DIR = -10011, RANGE_ABSENT = 2046;
-    private static final long HOLD_MS = 90_000;
+    /**
+     * How long a value survives failed reads. The battery and ranges change slowly and the
+     * car often stops answering for them after start-up, so they keep their last reading
+     * (shown with its age); temperatures are dropped after 10 minutes.
+     */
+    private static long holdMs(String key) {
+        return key.equals("cabin") || key.equals("outside") ? 10 * 60_000L : Long.MAX_VALUE;
+    }
 
     private final Map<String, Integer> catalog = new HashMap<String, Integer>();
     private int catalogSize = -1; // -1 = not read yet
     private final Map<String, Object> lastValue = new HashMap<String, Object>();
     private final Map<String, Long> lastAt = new HashMap<String, Long>();
+    private final SharedPreferences sp;
+
+    /** Restores the last good readings so the screen isn't empty after a restart. */
+    CarData(SharedPreferences sp) {
+        this.sp = sp;
+        for (Spec s : SPECS) {
+            if (!sp.contains("v_" + s.key)) continue;
+            lastValue.put(s.key, sp.getInt("v_" + s.key, 0));
+            lastAt.put(s.key, sp.getLong("t_" + s.key, 0));
+        }
+    }
 
     // ----------------------------------------------------------------- catalog
 
@@ -120,9 +140,13 @@ final class CarData {
                 if (value != null) {
                     lastValue.put(s.key, value);
                     lastAt.put(s.key, now);
+                    sp.edit().putInt("v_" + s.key, (Integer) value).putLong("t_" + s.key, now).apply();
                 }
                 Long at = lastAt.get(s.key);
-                if (at != null && now - at < HOLD_MS) o.put(s.key, lastValue.get(s.key));
+                if (at != null && now - at < holdMs(s.key)) {
+                    o.put(s.key, lastValue.get(s.key));
+                    o.put(s.key + "Age", (now - at) / 1000); // seconds since the last good read
+                }
             }
             raw.put("catalog", catalogSize < 0 ? "?" : String.valueOf(catalogSize));
             o.put("raw", raw);

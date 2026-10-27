@@ -10,14 +10,17 @@ import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.provider.Settings;
 
 import org.json.JSONObject;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
 /**
- * Distance of the current drive, from GPS. A new trip starts on every car start:
- * when the head unit rebooted (boot count changed) or after a long silence
- * (the head unit sleeps when the car is off, so heartbeats stop).
+ * Kilometres driven today (resets at local midnight), from GPS. While the car moves it also
+ * records one location point per minute into {@link CloudSync}'s queue; stopped minutes are
+ * skipped. Everything is saved locally first, so nothing is lost without internet.
  */
 public final class TripTracker implements LocationListener {
 
@@ -28,26 +31,38 @@ public final class TripTracker implements LocationListener {
         return instance;
     }
 
-    private static final long NEW_TRIP_GAP_MS = 20 * 60 * 1000; // car off for 20+ min = new trip
-    private static final long BEAT_MS = 60 * 1000;
+    private static final long POINT_EVERY_MS = 60_000;
     private static final float MAX_ACCURACY_M = 40f;
-    private static final double MAX_SPEED_MS = 70; // 252 km/h: anything faster is a GPS jump
+    private static final double MAX_SPEED_MS = 70;     // 252 km/h: anything faster is a GPS jump
+    private static final float MOVING_SPEED_MS = 1.4f; // 5 km/h
+    private static final float MOVING_DISTANCE_M = 30f;
 
     private final Context ctx;
     private final SharedPreferences sp;
     private final Handler main = new Handler(Looper.getMainLooper());
     private boolean started = false;
-    private Location last;
-    private double meters;
-    private long startMs;
+    private Location last;          // last accepted fix, for distance
+    private Location lastPoint;     // last logged point, for "is it moving"
+    private long lastPointCheck;
     private long lastFixMs;
+    private String day;
+    private double meters;
 
     private TripTracker(Context c) {
         ctx = c;
         sp = c.getSharedPreferences("trip", Context.MODE_PRIVATE);
+        day = sp.getString("day", today());
         meters = Double.longBitsToDouble(sp.getLong("meters", 0));
-        startMs = sp.getLong("start", System.currentTimeMillis());
+        rollDay();
     }
+
+    static String today() {
+        return new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
+    }
+
+    public synchronized String day() { return day; }
+
+    public synchronized double km() { rollDay(); return meters / 1000.0; }
 
     /** Safe to call repeatedly; does nothing until location permission is granted. */
     public void start() {
@@ -61,52 +76,41 @@ public final class TripTracker implements LocationListener {
         if (started) return;
         if (ctx.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
         started = true;
-        rollIfNewDrive();
         try {
             LocationManager lm = (LocationManager) ctx.getSystemService(Context.LOCATION_SERVICE);
             lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 3, this, Looper.getMainLooper());
         } catch (SecurityException e) {
             started = false;
-            return;
         }
-        main.postDelayed(beat, BEAT_MS);
     }
 
-    private final Runnable beat = new Runnable() {
-        @Override
-        public void run() {
-            rollIfNewDrive();
-            main.postDelayed(this, BEAT_MS);
+    /** New local day: start today's total from zero (yesterday's total was already queued). */
+    private synchronized void rollDay() {
+        String t = today();
+        if (!t.equals(day)) {
+            day = t;
+            meters = 0;
+            last = null;
+            save();
         }
-    };
-
-    /** Starts a new trip if the head unit rebooted or was asleep long enough; then records a heartbeat. */
-    private void rollIfNewDrive() {
-        long now = System.currentTimeMillis();
-        int boot = Settings.Global.getInt(ctx.getContentResolver(), Settings.Global.BOOT_COUNT, -1);
-        long lastBeat = sp.getLong("beat", 0);
-        if (boot != sp.getInt("boot", Integer.MIN_VALUE) || now - lastBeat > NEW_TRIP_GAP_MS) {
-            reset();
-            sp.edit().putInt("boot", boot).apply();
-        }
-        sp.edit().putLong("beat", now).apply();
     }
 
     public synchronized void reset() {
         meters = 0;
-        startMs = System.currentTimeMillis();
         last = null;
         save();
     }
 
     private void save() {
-        sp.edit().putLong("meters", Double.doubleToLongBits(meters)).putLong("start", startMs).apply();
+        sp.edit().putString("day", day).putLong("meters", Double.doubleToLongBits(meters)).apply();
     }
 
     @Override
     public synchronized void onLocationChanged(Location l) {
+        rollDay();
         if (l.hasAccuracy() && l.getAccuracy() > MAX_ACCURACY_M) return;
-        lastFixMs = System.currentTimeMillis();
+        long now = System.currentTimeMillis();
+        lastFixMs = now;
         if (last != null) {
             float d = last.distanceTo(l);
             long dt = l.getTime() - last.getTime();
@@ -116,14 +120,25 @@ public final class TripTracker implements LocationListener {
             }
         }
         last = l;
+
+        // One point per minute, only while moving.
+        if (now - lastPointCheck >= POINT_EVERY_MS) {
+            lastPointCheck = now;
+            boolean moving = (l.hasSpeed() && l.getSpeed() >= MOVING_SPEED_MS)
+                    || (lastPoint != null && lastPoint.distanceTo(l) >= MOVING_DISTANCE_M);
+            if (lastPoint == null || moving) {
+                lastPoint = l;
+                if (moving) CloudSync.get(ctx).addPoint(day, l);
+            }
+        }
     }
 
     public synchronized String json() {
+        rollDay();
         JSONObject o = new JSONObject();
         try {
             o.put("km", meters / 1000.0);
-            o.put("start", startMs);
-            o.put("elapsed", System.currentTimeMillis() - startMs);
+            o.put("day", day);
             o.put("tracking", started);
             o.put("fix", lastFixMs > 0 && System.currentTimeMillis() - lastFixMs < 15000);
         } catch (Exception ignored) {

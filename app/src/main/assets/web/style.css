@@ -137,3 +137,5 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .form label.row{display:flex;align-items:center;gap:12px;font-size:20px;color:var(--ivory);margin-bottom:8px}
 .form label.row input{width:26px;height:26px;margin:0;accent-color:var(--gold);flex:none}
 #tripCell{cursor:pointer}
+
+.btn.danger{color:var(--live);border-color:rgba(227,106,85,.55)}

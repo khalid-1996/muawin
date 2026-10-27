@@ -1,0 +1,51 @@
+# Portainer stack: MongoDB (shared by future projects) + car-api for المعاون.
+#
+# Deploy: Portainer → Stacks → Add stack → paste this file, set the environment
+# variables below (Portainer's "Environment variables" section), Deploy.
+#
+# MongoDB is NOT published to the internet. Only car-api is published, on 8090,
+# and you put it behind Nginx Proxy Manager with HTTPS (e.g. car.khalid96.net → 8090).
+# For other projects on the same server, connect to MongoDB on the "mongo" network
+# or from the LAN via 127.0.0.1:27017 (bound to localhost only).
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD}
+    volumes:
+      - mongo-data:/data/db
+    ports:
+      - "127.0.0.1:27017:27017"   # local machine only (Compass via SSH tunnel)
+    networks: [mongo]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  car-api:
+    build: ./car-api
+    container_name: car-api
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URL: mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
+      MONGO_DB: muawin
+      CAR_API_KEY: ${CAR_API_KEY:?set CAR_API_KEY}
+      TZ: Asia/Dubai
+    ports:
+      - "8090:8090"
+    networks: [mongo]
+
+volumes:
+  mongo-data:
+
+networks:
+  mongo:
+    name: mongo

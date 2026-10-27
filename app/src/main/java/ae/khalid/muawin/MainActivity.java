@@ -38,6 +38,7 @@ public class MainActivity extends Activity {
         if (link.homeDisplay() < 0 && here != 0) link.setHomeDisplay(here);
         link.start();
         LinkService.start(this);
+        CloudSync.get(this).start();
 
         startTrip();
 
