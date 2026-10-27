@@ -92,9 +92,14 @@ final class CarData {
     private List<Cand> candidates(Spec s) {
         List<Cand> l = new ArrayList<Cand>();
         Integer cat = catalog.get(s.symbol);
+        boolean same = cat != null && cat == s.constFid;
+        // Battery: the built-in address first. On the Leopard 5 it tracks the cluster
+        // (11% = 11%), while the catalog's address kept answering the start-up value (13%).
+        boolean constFirst = "soc".equals(s.key);
         for (int tx : s.txs) {
-            if (cat != null) l.add(new Cand(tx, cat, "catalog"));
-            if (cat == null || cat != s.constFid) l.add(new Cand(tx, s.constFid, "const"));
+            if (constFirst) l.add(new Cand(tx, s.constFid, "const"));
+            if (cat != null && !(constFirst && same)) l.add(new Cand(tx, cat, "catalog"));
+            if (!constFirst && !same) l.add(new Cand(tx, s.constFid, "const"));
         }
         return l;
     }
